@@ -1,64 +1,35 @@
 import imgui
-import moderngl
 import moderngl_window as mglw
 from pathlib import Path
 from moderngl_window.integrations.imgui import ModernglWindowRenderer
-from pyrr import Matrix44
 from moderngl_window.scene.camera import KeyboardCamera
 
+from debugger import Debugger
+from input import Input
+from scene import Scene
 
-class FemurEngine(mglw.WindowConfig):
+
+class Window(mglw.WindowConfig):
     title = 'FemurEngine'
     window_size = 1280, 720
-    aspect_ratio = None
     resource_dir = (Path(__file__).parent / 'resources').resolve()
-
-    debug_wireframe = False
-    debug_bbox = False
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        imgui.create_context()
-
-        self.camera_enabled = True
-        self.imgui = ModernglWindowRenderer(self.wnd)
-
-        self.wnd.mouse_exclusivity = True
-        self.wnd.cursor = not self.camera_enabled
-
-        self.scene = self.load_scene('gltf/sponza/Sponza.gltf')
+        self.debugger = Debugger(self)
+        self.input = Input(self)
+        self.scene = Scene(self, 'gltf/sponza/Sponza.gltf')
         self.camera = KeyboardCamera(self.wnd.keys, fov=90.0, aspect_ratio=self.wnd.aspect_ratio, near=0.1, far=1000.0)
 
-        if self.scene.diagonal_size > 0:
-            self.camera.velocity = self.scene.diagonal_size / 5.0
+        if self.scene.instance.diagonal_size > 0:
+            self.camera.velocity = self.scene.instance.diagonal_size / 5.0
+
+        imgui.create_context()
+        self.imgui = ModernglWindowRenderer(self.wnd)
 
     def render(self, time: float, frame_time: float):
-        """Render the scene"""
-        self.ctx.enable_only(moderngl.DEPTH_TEST | moderngl.CULL_FACE)
-
-        translation = Matrix44.from_translation((0, 0, 0), dtype='f4')
-        camera_matrix = self.camera.matrix * translation
-
-        self.scene.draw(
-            projection_matrix=self.camera.projection.matrix,
-            camera_matrix=camera_matrix,
-            time=time,
-        )
-
-        if self.debug_bbox:
-            self.scene.draw_bbox(
-               projection_matrix=self.camera.projection.matrix,
-               camera_matrix=camera_matrix,
-               children=True,
-               color=(0.75, 0.75, 0.75),
-            )
-
-        if self.debug_wireframe:
-            self.scene.draw_wireframe(
-                projection_matrix=self.camera.projection.matrix,
-                camera_matrix=camera_matrix,
-                color=(1, 1, 1, 1),
-            )
+        self.scene.render(time, frame_time)
+        self.debugger.render(time, frame_time)
 
         # Render UI
         imgui.new_frame()
@@ -87,28 +58,14 @@ class FemurEngine(mglw.WindowConfig):
         self.imgui.resize(width, height)
 
     def key_event(self, key, action, modifiers):
+        self.input.key_event(key, action, modifiers)
         keys = self.wnd.keys
 
-        if self.camera_enabled:
-            self.camera.key_input(key, action, modifiers)
-
-        if action == keys.ACTION_PRESS:
-            if key == keys.F1:
-                self.camera_enabled = not self.camera_enabled
-                self.wnd.mouse_exclusivity = self.camera_enabled
-                self.wnd.cursor = not self.camera_enabled
-                self.timer.toggle_pause()
-            if key == keys.F2:
-                self.debug_wireframe = not self.debug_wireframe
-            if key == keys.F3:
-                self.debug_bbox = not self.debug_bbox
-
+        self.camera.key_input(key, action, modifiers)
         self.imgui.key_event(key, action, modifiers)
 
     def mouse_position_event(self, x, y, dx, dy):
-        if self.camera_enabled:
-            self.camera.rot_state(-dx, -dy)
-
+        self.camera.rot_state(-dx, -dy)
         self.imgui.mouse_position_event(x, y, dx, dy)
 
     def mouse_drag_event(self, x, y, dx, dy):
@@ -133,4 +90,4 @@ class FemurEngine(mglw.WindowConfig):
 
 
 if __name__ == '__main__':
-    mglw.run_window_config(FemurEngine)
+    mglw.run_window_config(Window)
